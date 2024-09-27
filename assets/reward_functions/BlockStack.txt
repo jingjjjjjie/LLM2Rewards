@@ -1,0 +1,57 @@
+@torch.jit.script
+def compute_reward(block_pos: torch.Tensor,
+                   block_rot: torch.Tensor,
+                   block_right_handle_pos: torch.Tensor,
+                   block_left_handle_pos: torch.Tensor,
+                   left_hand_pos: torch.Tensor,
+                   right_hand_pos: torch.Tensor,
+                   goal_pos: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+
+    # Parameters
+    handle_grab_radius = 0.05
+    ideal_block_height = 0.675
+    height_tolerance = 0.05
+    temperature1 = 0.1
+    temperature2 = 0.1
+    temperature3 = 0.1
+    distance_tolerance = 0.2
+    upright_bonus = 2.0
+    dist_multiplier = 10.0
+    goal_distance_multiplier = 5.0
+
+    reward_dict = {}
+
+    # Reward for the block's height
+    height_diff = torch.abs(block_pos[:, 2] - ideal_block_height)
+    block_height_reward = torch.exp(-height_diff / temperature1)
+    block_height_reward = torch.clamp(block_height_reward, 0, 1)
+    reward_dict["block_height_reward"] = block_height_reward
+
+    # Reward for bringing the left hand closer to the block's left handle
+    dist_left_hand_handle = torch.norm(block_left_handle_pos - left_hand_pos, p=1, dim=-1)
+    left_handle_reward = torch.exp(-dist_left_hand_handle / temperature2)
+    left_handle_reward = dist_multiplier * torch.clamp(left_handle_reward, 0, 1)
+    reward_dict["left_handle_reward"] = left_handle_reward
+
+    # Reward for bringing the right hand closer to the block's right handle
+    dist_right_hand_handle = torch.norm(block_right_handle_pos - right_hand_pos, p=1, dim=-1)
+    right_handle_reward = torch.exp(-dist_right_hand_handle / temperature3)
+    right_handle_reward = dist_multiplier * torch.clamp(right_handle_reward, 0, 1)
+    reward_dict["right_handle_reward"] = right_handle_reward
+
+    # Punishment for the block not being upright.
+    upright_rot = torch.tensor([1.0, 0.0, 0.0, 0.0]).to(block_rot.device)
+    block_upright_diff = torch.sum(torch.square(block_rot - upright_rot), dim=-1)
+    upright_punishment = -upright_bonus * torch.exp(-block_upright_diff / temperature1)
+    reward_dict["upright_punishment"] = upright_punishment
+
+    # Reward for bringing the block to the goal position
+    distance_to_goal = torch.norm(block_pos - goal_pos, p=1, dim=1)
+    goal_distance_reward = torch.exp(-distance_to_goal / temperature3)
+    goal_distance_reward = goal_distance_multiplier * torch.clamp(goal_distance_reward, 0, 1)
+    reward_dict["goal_distance_reward"] = goal_distance_reward
+
+    # Total reward
+    total_reward = block_height_reward + left_handle_reward + right_handle_reward + upright_punishment + goal_distance_reward
+
+    return total_reward, reward_dict

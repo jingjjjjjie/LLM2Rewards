@@ -1,0 +1,38 @@
+@torch.jit.script
+def compute_reward(switch_right_handle_pos: torch.Tensor, switch_left_handle_pos: torch.Tensor, right_hand_ff_pos: torch.Tensor, right_hand_mf_pos: torch.Tensor,
+                   right_hand_rf_pos: torch.Tensor, right_hand_lf_pos: torch.Tensor, left_hand_ff_pos: torch.Tensor, left_hand_mf_pos: torch.Tensor, 
+                   left_hand_rf_pos: torch.Tensor, left_hand_lf_pos: torch.Tensor, object_angvel: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+
+    # calculate distance from each finger to the switch handle
+    right_ff_dist = torch.norm(switch_right_handle_pos - right_hand_ff_pos, dim=-1)
+    right_mf_dist = torch.norm(switch_right_handle_pos - right_hand_mf_pos, dim=-1)
+    right_rf_dist = torch.norm(switch_right_handle_pos - right_hand_rf_pos, dim=-1)
+    right_lf_dist = torch.norm(switch_right_handle_pos - right_hand_lf_pos, dim=-1)
+    left_ff_dist = torch.norm(switch_left_handle_pos - left_hand_ff_pos, dim=-1)
+    left_mf_dist = torch.norm(switch_left_handle_pos - left_hand_mf_pos, dim=-1)
+    left_rf_dist = torch.norm(switch_left_handle_pos - left_hand_rf_pos, dim=-1)
+    left_lf_dist = torch.norm(switch_left_handle_pos - left_hand_lf_pos, dim=-1)
+
+    # reward for minimizing the distance between fingertips and target switch handles
+    dist_reward = -torch.mean(torch.stack((right_ff_dist, right_mf_dist, right_rf_dist, right_lf_dist, left_ff_dist, left_mf_dist, left_rf_dist, left_lf_dist), dim=0))
+    
+    # calculate the sum of the angular velocity
+    angvel_sum = torch.sum(torch.abs(object_angvel), dim=-1)
+
+    # reward for keeping the object stable (not rotating)
+    stability_reward = -angvel_sum
+
+    # calculate the switch handle height
+    switch_height = (switch_right_handle_pos[:, 2] + switch_left_handle_pos[:, 2]) / 2.0
+
+    # define the target height of the switch handles (can be adjusted according to the specific task)
+    target_height = torch.ones_like(switch_height) * 0.05
+
+    # reward for lifting the switch handles to the target height (using sigmoid function for smoother transitions)
+    height_reward = torch.sigmoid(switch_height - target_height)
+    
+    # calculate total reward by adding up individual reward components
+    total_reward = dist_reward + stability_reward + height_reward
+
+    # return total reward and individual reward components
+    return total_reward, {"dist_reward": dist_reward, "stability_reward": stability_reward, "height_reward": height_reward}

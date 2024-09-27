@@ -1,0 +1,31 @@
+@torch.jit.script
+def compute_reward(
+    object_pos: torch.Tensor, 
+    object_rot: torch.Tensor,
+    pen_right_handle_pos: torch.Tensor,
+    pen_left_handle_pos: torch.Tensor, 
+    right_hand_pos: torch.Tensor,
+    left_hand_pos: torch.Tensor,
+    right_hand_ff_pos: torch.Tensor,
+    right_hand_mf_pos: torch.Tensor,
+    right_hand_rf_pos: torch.Tensor,
+    right_hand_lf_pos: torch.Tensor,
+    left_hand_ff_pos: torch.Tensor,
+    left_hand_mf_pos: torch.Tensor,
+    left_hand_rf_pos: torch.Tensor,
+    left_hand_lf_pos: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    
+    cap_opening = torch.norm(pen_right_handle_pos - pen_left_handle_pos, dim=-1)
+    task_success = torch.clamp(cap_opening, min=0, max=1)
+
+    grip_right_distance = torch.norm(right_hand_pos - pen_right_handle_pos, dim=-1)
+    grip_left_distance = torch.norm(left_hand_pos - pen_left_handle_pos, dim=-1) 
+    grip_reward = (grip_right_distance < 0).float() + (grip_left_distance < 0).float()
+
+    right_fingertips_dist = torch.norm(right_hand_ff_pos + right_hand_mf_pos + right_hand_rf_pos + right_hand_lf_pos - pen_right_handle_pos*4, dim=-1)
+    left_fingertips_dist = torch.norm(left_hand_ff_pos + left_hand_mf_pos + left_hand_rf_pos + left_hand_lf_pos - pen_left_handle_pos*4, dim=-1)
+    fingertips_reward = (right_fingertips_dist < 0).float() + (left_fingertips_dist < 0).float()
+
+    total_reward = task_success + grip_reward + fingertips_reward
+
+    return total_reward, {"task_success_reward": task_success, "grip_reward": grip_reward, "fingertips_reward": fingertips_reward}

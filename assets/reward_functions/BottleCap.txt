@@ -1,0 +1,33 @@
+@torch.jit.script
+def compute_reward(bottle_pos: torch.Tensor, bottle_cap_pos: torch.Tensor, 
+                   left_hand_pos: torch.Tensor, right_hand_pos: torch.Tensor, 
+                   right_hand_ff_pos: torch.Tensor, right_hand_mf_pos: torch.Tensor, right_hand_rf_pos: torch.Tensor, 
+                   right_hand_lf_pos: torch.Tensor, right_hand_th_pos: torch.Tensor, goal_pos: torch.Tensor, object_angvel: torch.Tensor, right_hand_rot: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+
+    dist_to_goal = torch.sqrt(torch.square(torch.norm(bottle_cap_pos - goal_pos, dim=-1)))  # add sqrt to challenge RL
+    dist_left_hand_to_bottle = torch.norm(left_hand_pos - bottle_pos, dim=-1) ** 2            # add exponent to challenge RL
+    dist_right_hand_to_bottle_cap = torch.log(torch.norm(right_hand_pos - bottle_cap_pos, dim=-1))  # add log to improve diversity
+
+    dist_right_hand_ff_to_bottle_cap = torch.norm(right_hand_ff_pos - bottle_cap_pos, dim=-1)
+    dist_right_hand_mf_to_bottle_cap = torch.norm(right_hand_mf_pos - bottle_cap_pos, dim=-1)
+    dist_right_hand_rf_to_bottle_cap = torch.norm(right_hand_rf_pos - bottle_cap_pos, dim=-1)
+    dist_right_hand_lf_to_bottle_cap = torch.norm(right_hand_lf_pos - bottle_cap_pos, dim=-1)
+    dist_right_hand_th_to_bottle_cap = torch.norm(right_hand_th_pos - bottle_cap_pos, dim=-1)
+
+    dist_finger_tips_to_bottle_cap = 1 / (0.1 + (dist_right_hand_ff_to_bottle_cap + dist_right_hand_mf_to_bottle_cap +
+                                                dist_right_hand_rf_to_bottle_cap + dist_right_hand_lf_to_bottle_cap +
+                                                dist_right_hand_th_to_bottle_cap) / 5) 
+
+    temp1, temp2, temp3 = 0.005, 0.01, 0.01  # lowered temperature parameters
+
+    reward_dist_to_goal = torch.exp(-temp1 * dist_to_goal)
+    reward_left_hand_hold_bottle = torch.exp(-temp2 * dist_left_hand_to_bottle)
+    reward_right_hand_open_cap = dist_finger_tips_to_bottle_cap
+
+    total_reward = reward_dist_to_goal + reward_left_hand_hold_bottle + reward_right_hand_open_cap
+
+    reward_components = {"reward_dist_to_goal": reward_dist_to_goal,
+                         "reward_left_hand_hold_bottle": reward_left_hand_hold_bottle,
+                         "reward_right_hand_open_cap": reward_right_hand_open_cap}
+    
+    return total_reward, reward_components

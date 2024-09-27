@@ -1,0 +1,35 @@
+@torch.jit.script
+def compute_reward(object_pose: torch.Tensor, object_angvel: torch.Tensor, 
+                   fingertip_state: torch.Tensor, fingertip_another_state: torch.Tensor,
+                   goal_pos: torch.Tensor, goal_rot: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    reward = torch.tensor(0.0)
+    reward_components = {}
+
+    # redefine distance and rotation difference with amplified weights
+    dist_to_goal = torch.norm(object_pose[:, 0:3] - goal_pos, dim=-1)
+    reward_components['distance_reward'] = -200.0 * torch.exp(dist_to_goal / 0.03)
+   
+    rot_diff_to_goal = 1 - (object_pose[:, 3:7] * goal_rot).sum(dim=-1)
+    reward_components['rotation_reward'] = -10.0 * torch.exp(rot_diff_to_goal / 0.3)
+
+    # encourage the object to be handed over smoothly
+    dist_between_fingertips = torch.norm(fingertip_state[:, 0:3] - fingertip_another_state[:, 0:3], dim=-1)
+    reward_components['smoothness_reward'] = -torch.exp(dist_between_fingertips / 0.3)
+
+    # reward for correct object tossing behaviour
+    vert_angvel = object_angvel[:, 2]  # only consider the vertical (z-axis) angular velocity
+    reward_components['tossing_reward'] = torch.where(vert_angvel > 0.1,
+                                                      torch.exp(vert_angvel / 0.1),
+                                                      vert_angvel.device.new_zeros(1))
+
+    # encourage the object to move upward, importantly during the throwing transfer
+    reward_components['height_reward'] = object_pose[:, 2] / 0.3
+
+    # add a penalty if the object is rolling over (i.e., not maintaining its orientation)
+    rotation_penalty = torch.abs(object_angvel).mean()
+    reward_components['rotation_penalty'] = -rotation_penalty
+
+    # summing the reward components to get the final reward
+    reward = sum(reward_components.values())
+
+    return reward, reward_components

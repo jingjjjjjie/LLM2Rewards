@@ -1,0 +1,40 @@
+@torch.jit.script
+def compute_reward(object_pos: torch.Tensor, object_rot: torch.Tensor, goal_pos: torch.Tensor, goal_rot: torch.Tensor, left_hand_pos: torch.Tensor, right_hand_pos: torch.Tensor, initial_hand_pos: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    
+    # calculating distance of object to goal
+    distance_to_goal = torch.norm(object_pos - goal_pos, dim=-1)
+    
+    # calculating angular difference between object orientation and goal orientation 
+    rotation_diff = torch.norm(object_rot - goal_rot, dim=-1)
+    
+    # checking whether both hands are within 0.1 meters from their initial positions
+    left_hand_deviation = torch.norm(left_hand_pos - initial_hand_pos, dim=-1)
+    right_hand_deviation = torch.norm(right_hand_pos - initial_hand_pos, dim=-1)
+    
+    # checking if object falls below height
+    height_check = (object_pos[:, 2] >= 0.2).float()
+
+    # temperature parameters for scaling rewards
+    temp_distance = torch.tensor(0.2).to(object_pos.device)
+    temp_rotation = torch.tensor(0.2).to(object_pos.device)
+    temp_hand_pos = torch.tensor(0.1).to(object_pos.device)
+
+    # distance goal reward
+    reward_distance = torch.exp(-temp_distance * distance_to_goal)
+    # rotation goal reward
+    reward_rotation = torch.exp(-temp_rotation * rotation_diff)
+    # hight reward
+    reward_height = height_check
+    #hand position reward
+    reward_hand_position = torch.exp(-temp_hand_pos * (left_hand_deviation + right_hand_deviation))
+    
+    total_reward = reward_distance + reward_rotation + reward_height + reward_hand_position
+
+    reward_dict = {
+        'reward_distance': reward_distance, 
+        'reward_rotation': reward_rotation,
+        'reward_height': reward_height,
+        'reward_hand_position': reward_hand_position
+    }
+
+    return total_reward, reward_dict

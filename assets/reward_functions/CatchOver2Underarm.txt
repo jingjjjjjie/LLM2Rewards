@@ -1,0 +1,21 @@
+@torch.jit.script
+def compute_reward(object_pos: torch.Tensor, object_rot: torch.Tensor, object_linvel: torch.Tensor, 
+                   object_angvel: torch.Tensor, goal_pos: torch.Tensor, goal_rot: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    distance_to_goal = torch.norm(object_pos - goal_pos)
+    
+    # Improving the temperature for distance_to_goal
+    dist_temp = 0.1
+    dist_reward = torch.exp(-distance_to_goal/dist_temp)
+    
+    # Remove rot_reward and fingertip_reward
+    
+    # Adjust temperature for the discounts
+    linvel_temp = torch.mean(torch.abs(object_linvel))/10
+    angvel_temp = torch.mean(torch.abs(object_angvel))/10
+    
+    linvel_discount = torch.exp(-linvel_temp)
+    angvel_discount = torch.exp(-angvel_temp)
+    
+    total_reward = dist_reward + linvel_discount + angvel_discount
+    
+    return total_reward, {'dist_reward':dist_reward, 'linvel_discount':linvel_discount, 'angvel_discount':angvel_discount}

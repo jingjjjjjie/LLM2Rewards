@@ -1,0 +1,38 @@
+@torch.jit.script
+def compute_reward(object_rot: torch.Tensor, goal_rot: torch.Tensor, 
+                   object_another_rot: torch.Tensor, goal_another_rot: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]: 
+
+    # tolerance for angular distance
+    tol = torch.tensor(1e-3).to(object_rot.device)
+    
+    # calculate the quaternions difference
+    quat_diff = torch.abs(object_rot - goal_rot)
+    quat_diff_another = torch.abs(object_another_rot - goal_another_rot)
+    
+    # calculate the angular distance
+    angular_distance = torch.sqrt(torch.sum(quat_diff**2, dim=-1))
+    angular_distance_another = torch.sqrt(torch.sum(quat_diff_another**2, dim=-1))
+    
+    # reward is negative angular distance
+    reward_angular_distance = -angular_distance
+    reward_angular_distance_another = -angular_distance_another
+    
+    # temperature parameters
+    temp1 = torch.tensor(1.0).to(object_rot.device)
+    temp2 = torch.tensor(1.0).to(object_rot.device)
+    
+    # apply exponential transformation to rewards
+    reward_angular_distance = torch.exp(temp1 * reward_angular_distance)
+    reward_angular_distance_another = torch.exp(temp2 * reward_angular_distance_another)
+    
+    # if angular distance is less than tolerance, assign max reward of 1.0
+    reward_angular_distance = torch.where(angular_distance <= tol, torch.tensor(1.0).to(object_rot.device), reward_angular_distance)
+    reward_angular_distance_another = torch.where(angular_distance_another <= tol, torch.tensor(1.0).to(object_rot.device), reward_angular_distance_another)
+    
+    # total reward is the sum of both rewards
+    total_reward = reward_angular_distance + reward_angular_distance_another
+    
+    # dictionary of individual reward components
+    reward_components = {"reward_angular_distance": reward_angular_distance, "reward_angular_distance_another": reward_angular_distance_another}
+    
+    return total_reward, reward_components

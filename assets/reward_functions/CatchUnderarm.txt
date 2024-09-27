@@ -1,0 +1,34 @@
+@torch.jit.script
+def compute_reward(object_pose: torch.Tensor, goal_pose: torch.Tensor, 
+                   fingertip_state: torch.Tensor, fingertip_another_state: torch.Tensor, 
+                   object_linvel: torch.Tensor, object_angvel: torch.Tensor, object_pos: torch.Tensor, object_rot: torch.Tensor, goal_pos: torch.Tensor, goal_rot: torch.Tensor, fingertip_pos: torch.Tensor, fingertip_another_pos: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+
+    pos_weight = torch.tensor(2.0, dtype=torch.float32, device=object_pose.device)
+    rot_weight = torch.tensor(0.1, dtype=torch.float32, device=object_pose.device)
+    vel_weight = torch.tensor(0.1, dtype=torch.float32, device=object_linvel.device)
+    
+    pos_temp = torch.tensor(0.1, dtype=torch.float32, device=goal_pos.device)
+    rot_temp = torch.tensor(2.0, dtype=torch.float32, device=object_rot.device)
+    vel_temp = torch.tensor(10.0, dtype=torch.float32, device=object_linvel.device)
+
+    fingertip_dist = torch.norm(fingertip_state - fingertip_another_state, dim=-1)
+
+    object_pos, object_rot = torch.split(object_pose, [3, 4], dim=-1)
+    goal_pos, goal_rot = torch.split(goal_pose, [3, 4], dim=-1)
+
+    pos_dist = torch.norm(object_pos - goal_pos, dim=-1)
+    rot_dist = torch.norm(object_rot - goal_rot, dim=-1)
+    linvel_dist = torch.norm(object_linvel, dim=-1)
+    angvel_dist = torch.norm(object_angvel, dim=-1)
+
+    pos_reward = torch.exp(-pos_dist / pos_temp)
+    rot_reward = rot_weight * torch.exp(-rot_dist / rot_temp)
+    linvel_reward = -vel_weight * torch.exp(-linvel_dist / vel_temp)
+    angvel_reward = -vel_weight * torch.exp(-angvel_dist / vel_temp)
+
+    total_reward = pos_weight * pos_reward + rot_reward + linvel_reward + angvel_reward
+
+    rewards_dict = {"positional_reward": pos_reward, "rotational_reward": rot_reward, 
+                    "linear_velocity_reward": linvel_reward, "angular_velocity_reward": angvel_reward}
+
+    return total_reward, rewards_dict

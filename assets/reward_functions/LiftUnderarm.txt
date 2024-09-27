@@ -1,0 +1,44 @@
+@torch.jit.script
+def compute_reward(
+    object_pos: torch.Tensor, 
+    object_rot: torch.Tensor, 
+    pot_right_handle_pos: torch.Tensor, 
+    pot_left_handle_pos: torch.Tensor, 
+    left_hand_pos: torch.Tensor, 
+    right_hand_pos: torch.Tensor, 
+    goal_pos: torch.Tensor, 
+    left_hand_rot: torch.Tensor, 
+    right_hand_rot: torch.Tensor,
+    fingertip_state: torch.Tensor, 
+    fingertip_pos: torch.Tensor,
+    fingertip_another_state: torch.Tensor, 
+    fingertip_another_pos: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+
+    temperature1 = torch.tensor(2.0, device=object_pos.device)
+    temperature2 = torch.tensor(5.0, device=object_pos.device)
+    temperature3 = torch.tensor(2.0, device=object_pos.device)
+
+    handle_left_distance = torch.norm(pot_left_handle_pos - left_hand_pos, dim=-1)
+    handle_right_distance = torch.norm(pot_right_handle_pos - right_hand_pos, dim=-1)
+    handle_grasp_reward = torch.exp(-temperature1 * (handle_left_distance + handle_right_distance))
+
+    goal_distance = torch.norm(goal_pos - object_pos, dim=-1)
+    goal_reach_reward = torch.exp(-temperature2 * goal_distance)
+
+    left_hand_rot_diff = torch.norm(left_hand_rot - right_hand_rot, dim=-1)
+    right_hand_rot_diff = torch.norm(right_hand_rot - left_hand_rot, dim=-1)
+    grasp_orientation_reward = torch.exp(-temperature3 * (left_hand_rot_diff + right_hand_rot_diff))
+
+    grasp_bonus = (handle_grasp_reward > 0.3).float() # Lowered threshold
+    goal_bonus = (goal_reach_reward > 0.3).float() # Lowered threshold
+    zero = torch.tensor(0.0, device=object_pos.device)
+    success_bonus = torch.where(grasp_bonus + goal_bonus == 2, zero + 1.0, zero)
+
+    total_reward = handle_grasp_reward + 3 * goal_reach_reward + grasp_orientation_reward + success_bonus # Increased importance of goal_reach_reward
+    reward_dict = {
+        "handle grasping reward": handle_grasp_reward, 
+        "goal reaching reward": goal_reach_reward,
+        "grasp orientation reward": grasp_orientation_reward,
+        "success bonus": success_bonus
+    }
+    return total_reward, reward_dict

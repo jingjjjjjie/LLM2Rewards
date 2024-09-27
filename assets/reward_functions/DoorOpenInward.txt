@@ -1,0 +1,42 @@
+@torch.jit.script
+def compute_reward(object_pos: torch.Tensor, 
+                   door_left_handle_pos: torch.Tensor,
+                   door_right_handle_pos: torch.Tensor,
+                   right_hand_mf_pos: torch.Tensor,
+                   left_hand_mf_pos: torch.Tensor,
+                   right_hand_rf_pos: torch.Tensor,
+                   left_hand_rf_pos: torch.Tensor, object_linvel: torch.Tensor, object_angvel: torch.Tensor, 
+                   right_hand_pos: torch.Tensor, left_hand_pos: torch.Tensor, goal_pos: torch.Tensor, 
+                   fingertip_pos: torch.Tensor, fingertip_another_pos: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+
+  # Distance to the handles
+  door_handle_distance_right = torch.norm(right_hand_mf_pos - door_right_handle_pos, dim=-1)
+  door_handle_distance_left = torch.norm(left_hand_mf_pos - door_left_handle_pos, dim=-1)
+
+  # Introduce a varying temperature for transformation
+  temp_right = torch.clamp(door_handle_distance_right, 0.1, 10)
+  temp_left = torch.clamp(door_handle_distance_left, 0.1, 10)
+
+  # Define rewards for individual fingers
+  reward_mf_rh = torch.exp(-door_handle_distance_right / temp_right)
+  reward_rf_rh = torch.exp(-torch.norm(right_hand_rf_pos - door_right_handle_pos, dim=-1) / temp_right)
+  
+  reward_mf_lh = torch.exp(-door_handle_distance_left / temp_left)
+  reward_rf_lh = torch.exp(-torch.norm(left_hand_rf_pos - door_left_handle_pos, dim=-1) / temp_left)
+  
+  # Additional reward going toward the goal
+  reward_to_goal = torch.exp(-torch.norm(goal_pos - object_pos, dim=-1) / temp_right)
+
+  # Additional reward for the correct orientation of the object
+  reward_orientation = torch.exp(-torch.norm(object_angvel, dim=-1) / temp_left)
+
+  total_reward = reward_mf_rh + reward_rf_rh + reward_mf_lh + reward_rf_lh + reward_to_goal + reward_orientation
+
+  return total_reward, {
+        'reward_mf_rh': reward_mf_rh,
+        'reward_rf_rh': reward_rf_rh,
+        'reward_mf_lh': reward_mf_lh,
+        'reward_rf_lh': reward_rf_lh,
+        'reward_to_goal': reward_to_goal,
+        'reward_orientation': reward_orientation
+    }

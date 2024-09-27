@@ -1,0 +1,35 @@
+@torch.jit.script
+def compute_reward(door_right_handle_pos: torch.Tensor, door_left_handle_pos: torch.Tensor, right_hand_pos: torch.Tensor, left_hand_pos: torch.Tensor, goal_pos: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    door_handles_distance_threshold = 0.5
+    
+    # Calculate the Euclidean distance between the hands and door handle positions
+    dist_right_handle_to_right_hand = torch.norm(door_right_handle_pos - right_hand_pos, dim=-1)
+    dist_left_handle_to_left_hand = torch.norm(door_left_handle_pos - left_hand_pos, dim=-1)
+    
+    # Compute how far the door handles are from each other
+    dist_between_door_handles = torch.norm(door_right_handle_pos - door_left_handle_pos, dim=-1)
+    
+    # Compute the reward components based on the distances calculated
+    # Temperature parameters for reward scaling
+    right_handle_temperature = 0.05
+    left_handle_temperature = 0.05
+    door_handles_temperature = 0.05
+    
+    # Rewards for getting the hands closer to the door handles.
+    # We apply an exponential reward transformation to these components.
+    reward_right_handle_to_right_hand = torch.exp(-right_handle_temperature * dist_right_handle_to_right_hand)
+    reward_left_handle_to_left_hand = torch.exp(-left_handle_temperature * dist_left_handle_to_left_hand)
+    
+    # Penalty for door handles being far apart
+    penalty_door_handles_far = torch.where(dist_between_door_handles > door_handles_distance_threshold, 
+                                           torch.exp(door_handles_temperature * (dist_between_door_handles - door_handles_distance_threshold)), 
+                                           torch.tensor([0.0], device=door_right_handle_pos.device))
+    
+    # Sum the rewards and penalties to compute the total reward
+    reward = reward_right_handle_to_right_hand + reward_left_handle_to_left_hand - penalty_door_handles_far
+    
+    reward_dict = {"Reward right handle to right hand": reward_right_handle_to_right_hand,
+                   "Reward left handle to left hand": reward_left_handle_to_left_hand,
+                   "Penalty door handles far apart": penalty_door_handles_far}
+    
+    return reward, reward_dict

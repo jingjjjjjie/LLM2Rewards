@@ -1,0 +1,46 @@
+@torch.jit.script
+def compute_reward(
+    left_hand_pos: torch.Tensor,
+    right_hand_pos: torch.Tensor,
+    object_pos: torch.Tensor,
+    left_goal_pos: torch.Tensor,
+    right_goal_pos: torch.Tensor,
+    object_linvel: torch.Tensor,
+    device: torch.device
+) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    
+    # Define reward components
+    left_block_distance = torch.norm(object_pos[0] - left_goal_pos, dim=-1)
+    right_block_distance = torch.norm(object_pos[1] - right_goal_pos, dim=-1)
+
+    # Define penalty for the blocks' linear velocity
+    block_speed_penalty = torch.norm(object_linvel, p=1, dim=-1)
+
+    # Normalizing factor
+    norm_factor = torch.tensor([1.0], device=device)
+
+    # Set temperatures for each transformed reward component
+    temp_object_distance = torch.tensor([0.05], device=device)  # decrease to increase importance
+    temp_speed_penalty = torch.tensor([0.15], device=device)  # new reward component
+
+    # Scale reward components before applying exp transformation
+    left_object_reward = -temp_object_distance * left_block_distance / norm_factor
+    right_object_reward = -temp_object_distance * right_block_distance / norm_factor
+    speed_penalty = - temp_speed_penalty * block_speed_penalty / norm_factor
+
+    # Combine reward components using exp transformation to ensure the reward lies between 0 and 1
+    exp_left_object_reward = torch.exp(left_object_reward)
+    exp_right_object_reward = torch.exp(right_object_reward)
+    exp_speed_penalty = torch.exp(speed_penalty)
+
+    # The total reward is a combination of all reward components
+    total_reward = exp_left_object_reward + exp_right_object_reward + exp_speed_penalty
+
+    # Put individual reward components into a dictionary
+    individual_rewards = {
+        "exp_left_object_reward": exp_left_object_reward,
+        "exp_right_object_reward": exp_right_object_reward,
+        "exp_speed_penalty": exp_speed_penalty
+    }
+
+    return total_reward, individual_rewards

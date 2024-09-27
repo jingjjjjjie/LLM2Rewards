@@ -1,0 +1,37 @@
+@torch.jit.script
+def compute_reward(
+    object_pos: torch.Tensor, 
+    goal_pos: torch.Tensor,
+    object_rot: torch.Tensor,
+    goal_rot: torch.Tensor,
+    object_another_pos: torch.Tensor,
+    goal_another_pos: torch.Tensor,
+    object_another_rot: torch.Tensor,
+    goal_another_rot: torch.Tensor,
+    object_linvel: torch.Tensor,
+    object_another_linvel: torch.Tensor
+) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    
+    # calculate distance rewards
+    dist_reward_1 = torch.exp(-torch.norm(object_pos - goal_pos, p=2, dim=-1))
+    dist_reward_2 = torch.exp(-torch.norm(object_another_pos - goal_another_pos, p=2, dim=-1))
+    
+    # calculate rotation rewards
+    rot_reward_1 = torch.exp(-torch.norm(object_rot - goal_rot, p=2, dim=-1))
+    rot_reward_2 = torch.exp(-torch.norm(object_another_rot - goal_another_rot, p=2, dim=-1))
+
+    # calculate velocity penalties
+    velocity_penalty_1 = torch.exp(-torch.norm(object_linvel, p=2, dim=-1))
+    velocity_penalty_2 = torch.exp(-torch.norm(object_another_linvel, p=2, dim=-1))
+
+    # calculate total reward
+    reward = dist_reward_1 + dist_reward_2 + rot_reward_1 + rot_reward_2 - velocity_penalty_1 - velocity_penalty_2
+    
+    return reward, {
+        'dist_reward_1': dist_reward_1, 
+        'dist_reward_2': dist_reward_2,
+        'rot_reward_1': rot_reward_1,
+        'rot_reward_2': rot_reward_2,
+        'velocity_penalty_1': velocity_penalty_1,
+        'velocity_penalty_2': velocity_penalty_2
+    }

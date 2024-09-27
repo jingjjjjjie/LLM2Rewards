@@ -1,0 +1,33 @@
+@torch.jit.script
+def compute_reward(scissors_right_handle_pos: torch.Tensor, scissors_left_handle_pos: torch.Tensor, 
+                   left_hand_pos: torch.Tensor, right_hand_pos: torch.Tensor, goal_pos: torch.Tensor, 
+                   object_rot: torch.Tensor, goal_rot: torch.Tensor,
+                   right_hand_rot: torch.Tensor, left_hand_rot: torch.Tensor, 
+                   right_hand_ff_rot: torch.Tensor, 
+                   left_hand_ff_rot: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+
+    # Compute distance between hands and scissors' handle
+    right_hand_dist = torch.norm(right_hand_pos - scissors_right_handle_pos, dim=-1)
+    left_hand_dist = torch.norm(left_hand_pos - scissors_left_handle_pos, dim=-1)
+    
+    # Combine and normalize distances. Add 1e-6 to avoid division by zero.
+    dist_reward = -torch.log((right_hand_dist + left_hand_dist) / 2.0 + 1e-6)
+    
+    # Reward for opening the scissors
+    handle_dist = torch.norm(scissors_right_handle_pos - scissors_left_handle_pos, dim=-1)
+    opening_reward = torch.log(handle_dist + 1e-6)
+    
+    # Compute rotation reward
+    q_diff = quat_mul(goal_rot, quat_conjugate(object_rot))
+    rot_reward = -torch.log((q_diff[..., 0] + 1.0) / 2.0 + 1e-6)
+    
+    # Compute alignment reward
+    right_hand_alignment = quat_mul(right_hand_rot, quat_conjugate(right_hand_ff_rot))
+    left_hand_alignment = quat_mul(left_hand_rot, quat_conjugate(left_hand_ff_rot))
+    right_hand_alignment_reward = torch.log((right_hand_alignment[..., 0] + 1.0) / 2.0 + 1e-6)
+    left_hand_alignment_reward = torch.log((left_hand_alignment[..., 0] + 1.0) / 2.0 + 1e-6)
+
+    # Combine and normalize reward components
+    total_reward = dist_reward + opening_reward + rot_reward + right_hand_alignment_reward * 0.3 + left_hand_alignment_reward * 0.7
+    
+    return total_reward, {'dist_reward':dist_reward, 'opening_reward':opening_reward, 'rot_reward':rot_reward, 'right_hand_alignment_reward':right_hand_alignment_reward, 'left_hand_alignment_reward':left_hand_alignment_reward}

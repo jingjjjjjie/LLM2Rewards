@@ -1,0 +1,24 @@
+@torch.jit.script
+def compute_reward(door_right_handle_pos: torch.Tensor, door_left_handle_pos: torch.Tensor, object_rot: torch.Tensor, door_left_handle_rot: torch.Tensor, left_hand_rot: torch.Tensor, right_hand_rot: torch.Tensor, door_right_handle_rot: torch.Tensor, object_linvel: torch.Tensor, object_angvel: torch.Tensor, right_hand_pos: torch.Tensor, left_hand_pos: torch.Tensor, device: str) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+
+    # a positive reward for moving the door
+    door_distance_reward = torch.abs(door_right_handle_pos[:, 1] - door_left_handle_pos[:, 1])
+    door_distance_reward = torch.exp(door_distance_reward - 0.5)
+
+    # a small positive reward for keeping the door stable
+    door_rotation_penalty = torch.norm(object_rot, dim=1)
+    door_rotation_penalty = torch.exp(-door_rotation_penalty)
+
+    # a small positive reward for keeping the hand stable
+    hand_rotation_penalty = torch.norm(left_hand_rot, dim=1) + torch.norm(right_hand_rot, dim=1)
+    hand_rotation_penalty = torch.exp(-hand_rotation_penalty)
+
+    # a small positive reward for successfully grabbing the handle
+    grasp_reward = torch.norm(right_hand_pos - door_right_handle_pos, dim=1) + torch.norm(left_hand_pos - door_left_handle_pos, dim=1)
+    grasp_reward = torch.exp(-grasp_reward)
+
+    reward = door_distance_reward + door_rotation_penalty + hand_rotation_penalty + grasp_reward
+
+    individual_rewards = {'door_distance_reward': door_distance_reward, 'door_rotation_penalty': door_rotation_penalty, 'hand_rotation_penalty': hand_rotation_penalty, 'grasp_reward': grasp_reward}
+
+    return reward.to(device), individual_rewards

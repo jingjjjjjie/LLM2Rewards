@@ -1,0 +1,13 @@
+@torch.jit.script
+def compute_reward(kettle_handle_pos: torch.Tensor, kettle_spout_pos: torch.Tensor, bucket_handle_pos: torch.Tensor, right_hand_pos: torch.Tensor, left_hand_pos: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+
+    kettle_spout_bucket_distance = torch.norm(kettle_spout_pos - bucket_handle_pos, dim=-1)
+    kettle_bucket_reward = torch.exp(-0.7*kettle_spout_bucket_distance)  # scale up by making the factor in the exponent larger
+
+    right_hand_kettle_handle_distance = torch.norm(right_hand_pos - kettle_handle_pos, dim=-1)
+    left_hand_bucket_handle_distance = torch.norm(left_hand_pos - bucket_handle_pos, dim=-1)
+    hand_kettle_bucket_reward = torch.exp(-0.5*right_hand_kettle_handle_distance) + torch.exp(-0.5*left_hand_bucket_handle_distance)
+
+    total_reward = kettle_bucket_reward + hand_kettle_bucket_reward
+
+    return total_reward, {'kettle_bucket_reward': kettle_bucket_reward, 'hand_kettle_bucket_reward': hand_kettle_bucket_reward}

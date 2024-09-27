@@ -1,0 +1,32 @@
+@torch.jit.script
+def compute_reward(cup_right_handle_pos: torch.Tensor, cup_left_handle_pos: torch.Tensor, object_pos: torch.Tensor,
+                   right_hand_pos: torch.Tensor, left_hand_pos: torch.Tensor, goal_rot: torch.Tensor, 
+                   object_rot: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    
+    # Constants
+    goal_height = 0.3
+    cup_height_scale = 1.0
+    rot_diff_scale = 5.0
+    hand_handle_distance_scale = 3.0
+    cup_height_temp = 0.5
+    rot_diff_temp = 1.0
+    hand_handle_distance_temp = 2.0
+    
+    # Compute cup height
+    cup_height = torch.exp(cup_height_scale * torch.max(object_pos[:, 2] - goal_height, torch.zeros_like(object_pos[:, 2]))) 
+    cup_height = cup_height.pow(cup_height_temp)
+    
+    # Compute rotation difference
+    rot_diff = torch.exp(rot_diff_scale * (1.0 - torch.nn.functional.cosine_similarity(goal_rot, object_rot, dim=1)))
+    rot_diff = rot_diff.pow(rot_diff_temp)
+    
+    # Compute handle-hand distance
+    right_handle_distance = torch.norm(right_hand_pos - cup_right_handle_pos, dim=1)
+    left_handle_distance = torch.norm(left_hand_pos - cup_left_handle_pos, dim=1)
+    hand_handle_distance = torch.exp(-hand_handle_distance_scale * (right_handle_distance + left_handle_distance))
+    hand_handle_distance = hand_handle_distance.pow(hand_handle_distance_temp)
+    
+    # Total reward
+    total_reward = cup_height + rot_diff + hand_handle_distance
+    
+    return total_reward, {'cup_height': cup_height, 'rot_diff': rot_diff, 'hand_handle_distance': hand_handle_distance}

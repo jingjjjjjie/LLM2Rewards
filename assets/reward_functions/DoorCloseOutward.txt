@@ -1,0 +1,60 @@
+@torch.jit.script
+def compute_reward(
+    door_left_handle_pos: torch.Tensor,
+    door_right_handle_pos: torch.Tensor,
+    right_hand_pos: torch.Tensor,
+    left_hand_pos: torch.Tensor,
+    goal_pos: torch.Tensor,
+    left_hand_rot: torch.Tensor,
+    right_hand_rot: torch.Tensor,
+    door_right_handle_rot: torch.Tensor,
+    left_hand_lf_rot: torch.Tensor,
+    right_hand_lf_rot: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    
+    # define scaling constants
+    goal_scale: float = 0.5
+    handle_pos_scale: float = 0.3
+    hand_flip_scale: float = 0.1
+    handle_rot_scale: float = 0.1
+    task_completion_bonus: float = 1.0
+
+    # Calculate distances
+    dist_door_handle_left_to_right = torch.norm(door_left_handle_pos - door_right_handle_pos, dim=-1)
+    dist_door_right_to_goal = torch.norm(door_right_handle_pos - goal_pos, dim=-1)
+    dist_left_hand_to_door_left = torch.norm(door_left_handle_pos - left_hand_pos, dim=-1)
+    dist_right_hand_to_door_right = torch.norm(door_right_handle_pos - right_hand_pos, dim=-1)
+    
+    # Calculate rotation of hand
+    left_hand_flip = torch.abs(left_hand_rot[:, 0])
+    right_hand_flip = torch.abs(right_hand_rot[:, 0])
+    handle_rot_diff = torch.abs(door_right_handle_rot[:, 0] - right_hand_lf_rot[:, 0])
+    
+    # Normalize distances and hand flip with temperature parameters
+    dist_door_handle_left_to_right_normalized = 1.0 - torch.tanh(dist_door_handle_left_to_right)
+    dist_door_right_to_goal_normalized = torch.exp(-dist_door_right_to_goal * goal_scale)
+    dist_left_hand_to_door_left_normalized = torch.exp(-dist_left_hand_to_door_left * handle_pos_scale)
+    dist_right_hand_to_door_right_normalized = torch.exp(-dist_right_hand_to_door_right * handle_pos_scale)
+    left_hand_flip_normalized = torch.exp(-left_hand_flip * hand_flip_scale)
+    right_hand_flip_normalized = torch.exp(-right_hand_flip * hand_flip_scale)
+    handle_rot_diff_normalized = torch.exp(-handle_rot_diff * handle_rot_scale)
+    
+    # Check if door is opened
+    door_opened = (dist_door_handle_left_to_right < 0.1).float()
+    task_completion_reward = door_opened * task_completion_bonus
+    
+    # Combine individual reward components 
+    combined_reward = dist_door_handle_left_to_right_normalized + dist_door_right_to_goal_normalized + dist_left_hand_to_door_left_normalized + dist_right_hand_to_door_right_normalized + left_hand_flip_normalized + right_hand_flip_normalized + task_completion_reward + handle_rot_diff_normalized
+    
+    # Build reward components dict
+    rewards_dict = {
+        'reward_door_opening': dist_door_handle_left_to_right_normalized,
+        'reward_door_to_goal': dist_door_right_to_goal_normalized,
+        'reward_left_hand_to_door_left': dist_left_hand_to_door_left_normalized,
+        'reward_right_hand_to_door_right': dist_right_hand_to_door_right_normalized,
+        'reward_left_hand_flip': left_hand_flip_normalized,
+        'reward_right_hand_flip': right_hand_flip_normalized,
+        'task_completion_reward': task_completion_reward,
+        'handle_rot_diff_reward': handle_rot_diff_normalized,
+    }
+    
+    return combined_reward, rewards_dict

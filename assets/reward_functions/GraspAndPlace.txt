@@ -1,0 +1,23 @@
+@torch.jit.script
+def compute_reward(object_pos: torch.Tensor, object_rot: torch.Tensor, right_hand_pos: torch.Tensor, left_hand_pos: torch.Tensor, block_right_handle_pos: torch.Tensor, block_left_handle_pos: torch.Tensor, goal_pos: torch.Tensor, goal_rot: torch.Tensor, object_pose: torch.Tensor, block_right_handle_rot: torch.Tensor, block_left_handle_rot: torch.Tensor, left_hand_rot: torch.Tensor, right_hand_rot: torch.Tensor, right_hand_ff_pos: torch.Tensor, right_hand_ff_rot: torch.Tensor, right_hand_mf_pos: torch.Tensor, right_hand_mf_rot: torch.Tensor, right_hand_rf_pos: torch.Tensor, right_hand_rf_rot: torch.Tensor, right_hand_lf_pos: torch.Tensor, right_hand_lf_rot: torch.Tensor, right_hand_th_pos: torch.Tensor, right_hand_th_rot: torch.Tensor, left_hand_ff_pos: torch.Tensor, left_hand_ff_rot: torch.Tensor, left_hand_mf_pos: torch.Tensor, left_hand_mf_rot: torch.Tensor, left_hand_rf_pos: torch.Tensor, left_hand_rf_rot: torch.Tensor, left_hand_lf_pos: torch.Tensor, left_hand_lf_rot: torch.Tensor, left_hand_th_pos: torch.Tensor, left_hand_th_rot: torch.Tensor, fingertip_state: torch.Tensor, fingertip_pos: torch.Tensor, fingertip_another_state: torch.Tensor, fingertip_another_pos: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    temp_position = 0.3    # temperature for position difference
+    weight_obj_position = 5.0 # increase weight for object's position
+    weight_obj_orientation = 0.3  # increase weight for the object's orientation
+    
+    pos_diff = torch.sqrt(torch.sum((right_hand_pos - object_pos) ** 2, dim=-1))
+    rot_diff = torch.sqrt(torch.sum((object_rot - goal_rot) ** 2, dim=-1))
+    
+    hand_in_position = torch.exp(-pos_diff / temp_position)
+    obj_in_orientation = weight_obj_orientation * torch.exp(-rot_diff / temp_position)
+    
+    final_pos_diff = torch.sqrt(torch.sum((block_right_handle_pos - goal_pos) ** 2, dim=-1)) + torch.sqrt(torch.sum((block_left_handle_pos - goal_pos) ** 2, dim=-1))
+    object_in_position = weight_obj_position * torch.exp(-final_pos_diff / temp_position)
+    
+    reward = hand_in_position + obj_in_orientation + object_in_position
+    
+    reward_dict = {
+        'hand_in_position': hand_in_position,
+        'object_in_orientation': obj_in_orientation,
+        'object_in_position': object_in_position
+    }
+    return reward, reward_dict
