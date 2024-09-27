@@ -1,0 +1,58 @@
+import torch
+from torch import Tensor
+from typing import Dict, Tuple
+
+@torch.jit.script
+def compute_reward(left_hand_pos: Tensor,
+                   right_hand_pos: Tensor,
+                   door_left_handle_pos: Tensor,
+                   door_right_handle_pos: Tensor,
+                   door_left_handle_rot: Tensor,
+                   door_right_handle_rot: Tensor,
+                   goal_rot: Tensor) -> Tuple[Tensor, Dict[str, Tensor]]:
+
+    # Calculate distances
+    left_hand_to_left_handle_dist = torch.norm(left_hand_pos - door_left_handle_pos, dim=-1)
+    right_hand_to_right_handle_dist = torch.norm(right_hand_pos - door_right_handle_pos, dim=-1)
+
+    # Reward for the left hand approaching the left handle and apply scaling
+    left_hand_temp = 10.0
+    left_hand_approach_reward = -torch.exp(left_hand_to_left_handle_dist / left_hand_temp)
+
+    # Reward for the right hand approaching the right handle and apply scaling
+    right_hand_temp = 10.0
+    right_hand_approach_reward = -torch.exp(right_hand_to_right_handle_dist / right_hand_temp)
+
+    # Calculate the orientation difference between the door handle"s rotation and the goal rotation
+    door_left_aligned = torch.abs(torch.sum(door_left_handle_rot * goal_rot, dim=-1))
+    door_right_aligned = torch.abs(torch.sum(door_right_handle_rot * goal_rot, dim=-1))
+
+    # Reward for alignment of the door handles with the goal rotation.
+    alignment_reward_left = door_left_aligned * 5
+    alignment_reward_right = door_right_aligned * 5
+
+    # Weight the rewards
+    left_hand_weight = 0.3
+    right_hand_weight = 0.3
+    alignment_left_weight = 0.2
+    alignment_right_weight = 0.2
+
+    # Combine the rewards
+    reward_left = (left_hand_weight * left_hand_approach_reward
+                   + alignment_left_weight * alignment_reward_left)
+    reward_right = (right_hand_weight * right_hand_approach_reward
+                    + alignment_right_weight * alignment_reward_right)
+
+    # Final reward is the sum of left and right rewards.
+    total_reward = reward_left + reward_right
+
+    # Return the total reward and individual reward components as a dictionary
+    rewards = {
+        "left_hand_approach_reward": left_hand_approach_reward,
+        "right_hand_approach_reward": right_hand_approach_reward,
+        "alignment_reward_left": alignment_reward_left,
+        "alignment_reward_right": alignment_reward_right,
+        "total_reward": total_reward
+    }
+
+    return total_reward, rewards

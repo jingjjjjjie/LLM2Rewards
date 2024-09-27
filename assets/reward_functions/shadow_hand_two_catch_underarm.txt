@@ -1,0 +1,35 @@
+import torch
+from typing import Tuple, Dict
+
+@torch.jit.script
+def compute_reward(object_pos: torch.Tensor, goal_pos: torch.Tensor, object_another_pos: torch.Tensor, goal_another_pos: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    # Compute the distance between the objects and their respective goals
+    object_to_goal_distance = torch.norm(object_pos - goal_pos, dim=-1)
+    object_another_to_goal_another_distance = torch.norm(object_another_pos - goal_another_pos, dim=-1)
+
+    # Compute the average distance between objects and goals
+    average_obj_to_goal_distance = (object_to_goal_distance + object_another_to_goal_another_distance) / 2
+
+    # Reward components
+    avg_reward_component = -average_obj_to_goal_distance
+
+    # Normalize the reward components using a temperature parameter
+    temperature_avg = torch.tensor(0.1, device=object_pos.device)
+
+    avg_reward_normalized = torch.exp(avg_reward_component / temperature_avg)
+
+    # Add a bonus reward when both objects are close to their goals
+    capture_radius = torch.tensor(0.05, device=object_pos.device)
+    both_captured = torch.logical_and(object_to_goal_distance < capture_radius, object_another_to_goal_another_distance < capture_radius)
+    both_captured_bonus = torch.where(both_captured, torch.tensor(20.0, device=object_pos.device), torch.tensor(0.0, device=object_pos.device))
+
+    # Combine the reward components
+    total_reward = avg_reward_normalized + both_captured_bonus
+
+    # Return the total reward and a dictionary of each individual reward component
+    reward_components = {
+        "average_obj_to_goal_reward": avg_reward_normalized,
+        "both_captured_bonus": both_captured_bonus
+    }
+
+    return total_reward, reward_components

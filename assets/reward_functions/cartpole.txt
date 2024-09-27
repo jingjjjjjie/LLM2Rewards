@@ -1,0 +1,36 @@
+import torch
+from typing import Dict, Tuple
+
+@torch.jit.script
+def compute_reward(dof_pos: torch.Tensor, dof_vel: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    # Extract cart position and velocity
+    cart_pos, cart_vel = dof_pos[:, 0], dof_vel[:, 0]
+    # Extract pole angle and angular velocity
+    pole_angle, pole_angular_vel = dof_pos[:, 1], dof_vel[:, 1]
+
+    # Constants
+    pole_angle_threshold = torch.tensor(12 * (2 * 3.141592 / 360.), device=dof_pos.device)  # 0.20943 radians (12 degrees)
+    cart_pos_threshold = torch.tensor(2.4, device=dof_pos.device)
+
+    # Compute reward components
+    cart_pos_reward = torch.exp(-0.5 * (cart_pos / cart_pos_threshold)**2)
+    pole_angle_reward = torch.exp(-0.5 * (pole_angle / pole_angle_threshold)**2)
+    device = dof_pos.device
+
+    # Reward transformation temperature parameters
+    cart_pos_temperature, pole_angle_temperature = torch.tensor(1.0, device=device), torch.tensor(1.0, device=device)
+
+    # Transform and normalize reward components
+    cart_pos_transformed_reward = (cart_pos_reward * cart_pos_temperature).clamp(min=0.01, max=1)
+    pole_angle_transformed_reward = (pole_angle_reward * pole_angle_temperature).clamp(min=0.01, max=1)
+
+    # Combine reward components
+    total_reward = cart_pos_transformed_reward * pole_angle_transformed_reward
+
+    # Store individual reward components in a dictionary
+    reward_components = {
+        "cart_pos_reward": cart_pos_transformed_reward,
+        "pole_angle_reward": pole_angle_transformed_reward
+    }
+
+    return total_reward, reward_components

@@ -1,0 +1,38 @@
+import torch
+from torch import Tensor
+from typing import Dict, Tuple
+
+@torch.jit.script
+def compute_reward_v5(object_pos: torch.Tensor, goal_pos: torch.Tensor, left_hand_pos: torch.Tensor, right_hand_pos: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+
+    distance_to_goal = torch.norm(object_pos - goal_pos, dim=-1)
+    distance_to_left_hand = torch.norm(object_pos - left_hand_pos, dim=-1)
+    distance_to_right_hand = torch.norm(object_pos - right_hand_pos, dim=-1)
+
+    grasp_reward_temperature_left = torch.tensor(0.08, device=object_pos.device)
+    grasp_reward_left = torch.exp(-distance_to_left_hand / grasp_reward_temperature_left)
+
+    grasp_reward_temperature_right = torch.tensor(0.08, device=object_pos.device)
+    grasp_reward_right = torch.exp(-distance_to_right_hand / grasp_reward_temperature_right)
+    grasp_reward = torch.max(grasp_reward_left, grasp_reward_right)
+
+    goal_reward_temperature = torch.tensor(0.1, device=object_pos.device)
+    goal_reward = torch.exp(-distance_to_goal / goal_reward_temperature)
+
+    smooth_contact_temp = torch.tensor(0.12, device=object_pos.device)
+    smooth_contact_reward = torch.exp(-torch.abs(distance_to_left_hand - distance_to_right_hand) / smooth_contact_temp)
+
+    bonus_threshold = torch.tensor(0.03, device=object_pos.device)
+    goal_bonus = torch.where(distance_to_goal < bonus_threshold, torch.tensor(1.0, device=object_pos.device), torch.tensor(0.0, device=object_pos.device))
+
+    total_reward = (5 * grasp_reward * smooth_contact_reward) + (12 * goal_reward) + (25 * goal_bonus)
+
+    reward_components = {
+        "grasp_reward_left": grasp_reward_left,
+        "grasp_reward_right": grasp_reward_right,
+        "goal_reward": goal_reward,
+        "smooth_contact_reward": smooth_contact_reward,
+        "goal_bonus": goal_bonus
+    }
+
+    return total_reward, reward_components

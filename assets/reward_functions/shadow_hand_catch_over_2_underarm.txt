@@ -1,0 +1,41 @@
+import torch
+from typing import Dict, Tuple
+
+@torch.jit.script
+def compute_reward(object_pos: torch.Tensor, goal_pos: torch.Tensor, object_linvel: torch.Tensor, fingertip_pos: torch.Tensor, fingertip_another_pos: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    # Compute distance from objects to goals
+    dist_to_goal_1 = torch.norm(object_pos - goal_pos, dim=-1)
+    dist_to_goal_2 = torch.norm(object_pos - goal_pos.flip(0), dim=-1)
+
+    # Compute the direction from objects to goals
+    direction_to_goal_1 = (goal_pos - object_pos) / dist_to_goal_1.unsqueeze(-1)
+    direction_to_goal_2 = (goal_pos.flip(0) - object_pos) / dist_to_goal_2.unsqueeze(-1)
+
+    # Compute the dot product of linear velocity and direction to goals
+    object_linvel_dot_direction_1 = torch.sum(object_linvel * direction_to_goal_1, dim=-1)
+    object_linvel_dot_direction_2 = torch.sum(object_linvel * direction_to_goal_2, dim=-1)
+
+    # Compute distance from fingertips to objects
+    dist_fingertip_to_object_1 = torch.norm(fingertip_pos - object_pos.unsqueeze(1), dim=-1)
+    dist_fingertip_to_object_2 = torch.norm(fingertip_another_pos - object_pos.unsqueeze(1), dim=-1)
+
+    # Choose the smallest distances for each object
+    dist_fingertip_to_object = torch.minimum(dist_fingertip_to_object_1, dist_fingertip_to_object_2)
+
+    # Temperature parameters
+    temp_to_goal = torch.tensor(1.0, device=object_pos.device)  # Adjusted temperature
+    temp_grip = torch.tensor(100.0, device=object_pos.device)  # Adjusted temperature
+    temp_goal_velocity = torch.tensor(1.0, device=object_pos.device)
+
+    # Compute reward components
+    reward_to_goal = torch.exp(-temp_to_goal * (dist_to_goal_1 + dist_to_goal_2))  # Replace with a reward component that scales properly
+    reward_grip = torch.exp(-temp_grip * torch.mean(dist_fingertip_to_object, dim=1))
+    reward_goal_velocity = (torch.relu(object_linvel_dot_direction_1) + torch.relu(object_linvel_dot_direction_2)) * temp_goal_velocity
+
+    # Total reward
+    total_reward = 0.4 * reward_to_goal + 0.4 * reward_grip + 0.2 * reward_goal_velocity  # Adjusted weights, making sure they sum up to 1
+
+    # Reward components dictionary
+    reward_dict = {"reward_to_goal": reward_to_goal, "reward_grip": reward_grip, "reward_goal_velocity": reward_goal_velocity}
+
+    return total_reward, reward_dict

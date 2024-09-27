@@ -1,0 +1,38 @@
+import torch
+from typing import Dict, Tuple
+
+@torch.jit.script
+def compute_reward(root_states: torch.Tensor,
+                   targets: torch.Tensor,
+                   dt: float) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+
+    # Useful tensors from the environment
+    torso_position = root_states[:, 0:3]
+    velocity = root_states[:, 7:10]
+
+    # Compute the forward direction
+    forward_dir = targets - torso_position
+    forward_dir[:, 2] = 0
+    forward_dir = torch.nn.functional.normalize(forward_dir, dim=-1)
+
+    # Compute forward speed
+    forward_speed = torch.sum(velocity * forward_dir, dim=-1)
+
+    # Hyperparameters
+    forward_speed_weight = 10.0
+    forward_speed_temperature = 2.0
+    time_penalty_weight = 1.0
+
+    # Reward components
+    forward_reward = torch.exp(forward_speed / forward_speed_temperature)
+    time_penalty = torch.tensor(dt, device=root_states.device)
+
+    # Penalize longer episode lengths more
+    time_penalty = time_penalty * torch.exp(time_penalty / 0.01)
+
+    # Total reward
+    reward = forward_speed_weight * forward_reward - time_penalty_weight * time_penalty
+
+    reward_components = {"forward_reward": forward_reward, "time_penalty": time_penalty}
+
+    return reward, reward_components

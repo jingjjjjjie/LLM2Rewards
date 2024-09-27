@@ -1,0 +1,62 @@
+import torch
+from typing import Tuple, Dict
+
+@torch.jit.script
+def compute_reward(object_pos: torch.Tensor,
+                  goal_pos: torch.Tensor,
+                  object_rot: torch.Tensor,
+                  goal_rot: torch.Tensor,
+                  fingertip_pos: torch.Tensor,
+                  fingertip_another_pos: torch.Tensor,
+                  object_linvel: torch.Tensor,
+                  object_angvel: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+
+    # Calculate the distance between the object and the goal positions
+    pos_dist = torch.norm(object_pos - goal_pos, dim=-1)
+
+    # Calculate the rotational distance between the object and the goal rotations
+    rot_dist = torch.acos(torch.clamp(torch.sum(object_rot * goal_rot, dim=-1), -1, 1))  # Convert quaternions to angle difference
+
+    # Calculate the average distance between the object and fingertips of both hands
+    fingertip_dist = torch.norm(object_pos.unsqueeze(1) - fingertip_pos, dim=-1).mean(dim=1)
+    fingertip_another_dist = torch.norm(object_pos.unsqueeze(1) - fingertip_another_pos, dim=-1).mean(dim=1)
+
+    # Calculate the total linear and angular velocities
+    linvel_magnitude = torch.norm(object_linvel, dim=-1)
+    angvel_magnitude = torch.norm(object_angvel, dim=-1)
+
+    # Set temperature parameters
+    pos_temp = 0.1
+    rot_temp = 0.005
+    fingertip_temp = 0.005
+    vel_temp = 0.1
+
+    # Calculate reward components
+    pos_reward = torch.exp(-pos_dist / pos_temp)
+    rot_reward = torch.exp(-rot_dist / rot_temp)
+    fingertip_reward = torch.exp(-torch.min(fingertip_dist, fingertip_another_dist) / fingertip_temp)
+    vel_reward = torch.exp(-(linvel_magnitude + angvel_magnitude) / vel_temp)
+
+    # Weighing the reward components
+    w_pos = 0.25
+    w_rot = 0.25
+    w_fingertip = 0.25
+    w_vel = 0.25
+
+    # Compute the total reward
+    total_reward = w_pos * pos_reward + w_rot * rot_reward + w_fingertip * fingertip_reward + w_vel * vel_reward
+
+    # Add a bonus reward for successfully catching the object
+    catch_threshold = 0.05
+    catch_bonus_multiplier = 2.0
+    successful_catch = (pos_dist < catch_threshold).float()
+    total_reward *= (1 + catch_bonus_multiplier * successful_catch)
+
+    # Create a dictionary for individual reward components
+    reward_components = {"pos_reward": pos_reward,
+                         "rot_reward": rot_reward,
+                         "fingertip_reward": fingertip_reward,
+                         "vel_reward": vel_reward,
+                         "catch_bonus": catch_bonus_multiplier * successful_catch}
+
+    return total_reward, reward_components

@@ -1,0 +1,31 @@
+@torch.jit.script
+def compute_reward(goal_pos: torch.Tensor, door_left_handle_pos: torch.Tensor, door_right_handle_pos: torch.Tensor, left_hand_pos: torch.Tensor, right_hand_pos: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    # Define temperature parameters for the reward components
+    distance_temperature: float = 1.0
+
+    # Compute the distance between the hands and door handles
+    left_hand_door_diff = door_left_handle_pos - left_hand_pos
+    right_hand_door_diff = door_right_handle_pos - right_hand_pos
+
+    # Calculate the distance between the goal position and the door handles
+    goal_left_handle_diff = goal_pos - door_left_handle_pos
+    goal_right_handle_diff = goal_pos - door_right_handle_pos
+
+    # Compute the reward components
+    left_hand_distance_reward = torch.exp(-distance_temperature * torch.norm(left_hand_door_diff, dim=-1))
+    right_hand_distance_reward = torch.exp(-distance_temperature * torch.norm(right_hand_door_diff, dim=-1))
+    goal_left_handle_distance_reward = torch.exp(-distance_temperature * torch.norm(goal_left_handle_diff, dim=-1))
+    goal_right_handle_distance_reward = torch.exp(-distance_temperature * torch.norm(goal_right_handle_diff, dim=-1))
+
+    # Combine the reward components
+    total_reward = left_hand_distance_reward + right_hand_distance_reward + goal_left_handle_distance_reward + goal_right_handle_distance_reward
+
+    # Return the total reward and individual reward components in a dictionary
+    reward_info = {
+        "left_hand_distance_reward": left_hand_distance_reward,
+        "right_hand_distance_reward": right_hand_distance_reward,
+        "goal_left_handle_distance_reward": goal_left_handle_distance_reward,
+        "goal_right_handle_distance_reward": goal_right_handle_distance_reward
+    }
+
+    return total_reward, reward_info

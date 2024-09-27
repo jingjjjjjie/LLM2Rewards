@@ -1,0 +1,40 @@
+import torch
+from torch import Tensor
+from typing import Dict, Tuple
+
+@torch.jit.script
+def compute_reward(object_pos: Tensor, goal_pos: Tensor, left_hand_pos: Tensor, right_hand_pos: Tensor,
+                   pot_right_handle_pos: Tensor, pot_left_handle_pos: Tensor) -> Tuple[Tensor, Dict[str, Tensor]]:
+
+    # Constants
+    distance_threshold = 0.05
+    grasping_threshold = 0.1
+    object_goal_temperature = 15.0  # Increased temperature parameter for object_goal_reward
+    grasping_reward_scale = 0.3  # Adjusted scaling factor for grasping_reward
+
+    # Calculate distance between object and goal
+    object_goal_distance = torch.norm(object_pos - goal_pos, dim=-1)
+
+    # Calculate distance between hands and pot handles
+    left_hand_handle_distance = torch.norm(left_hand_pos - pot_left_handle_pos, dim=-1)
+    right_hand_handle_distance = torch.norm(right_hand_pos - pot_right_handle_pos, dim=-1)
+
+    # Check if both hands are grasping the pot handles
+    left_hand_grasping = (left_hand_handle_distance < grasping_threshold).float()
+    right_hand_grasping = (right_hand_handle_distance < grasping_threshold).float()
+
+    # Define individual reward components
+    object_goal_reward = torch.exp(-object_goal_temperature * object_goal_distance)
+    grasping_reward = (left_hand_grasping * right_hand_grasping) * grasping_reward_scale
+
+    # Total reward
+    reward = object_goal_reward + grasping_reward
+
+    # Store individual rewards in dictionary
+    reward_info = {
+        "left_hand_grasping": left_hand_grasping,
+        "right_hand_grasping": right_hand_grasping,
+        "object_goal_reward": object_goal_reward
+    }
+
+    return reward, reward_info

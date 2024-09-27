@@ -1,0 +1,30 @@
+import torch
+from typing import Dict, Tuple
+
+@torch.jit.script
+def compute_reward(object_rot: torch.Tensor, goal_rot: torch.Tensor, object_angvel: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+
+    # Compute the angle difference between the object rotation and the goal rotation
+    quaternion_difference = torch.einsum("bi,bi->b", object_rot, goal_rot)
+    angle_difference = 2 * torch.acos(torch.abs(quaternion_difference))
+
+    # Reward for reaching the goal orientation
+    orientation_reward_temperature = 20.0
+    orientation_reward_multiplicative_factor = 5.0
+    orientation_reward = orientation_reward_multiplicative_factor * torch.exp(-orientation_reward_temperature * angle_difference**2)
+
+    # Penalty for high rotation speeds
+    angular_speed_penalty_temperature = 6.0  # increase the temperature value
+    angular_speed_penalty_multiplicative_factor = 3.0  # increase the multiplicative factor
+    angular_speed_penalty = angular_speed_penalty_multiplicative_factor * torch.exp(-angular_speed_penalty_temperature * torch.norm(object_angvel, dim=1)**2)
+
+    # Total reward
+    total_reward = orientation_reward - angular_speed_penalty
+
+    # Dictionary of each individual reward component
+    reward_components = {
+        "orientation_reward": orientation_reward,
+        "angular_speed_penalty": angular_speed_penalty,
+    }
+
+    return total_reward, reward_components

@@ -1,0 +1,37 @@
+import torch
+from torch import Tensor
+from typing import Dict, Tuple
+
+@torch.jit.script
+def compute_reward(bottle_cap_pos: Tensor, bottle_pos: Tensor, right_hand_pos: Tensor, left_hand_pos: Tensor, goal_pos: Tensor) -> Tuple[Tensor, Dict[str, Tensor]]:
+    device = bottle_cap_pos.device
+
+    # Distance between the right hand and bottle cap
+    dist_right_hand_to_cap = torch.norm(right_hand_pos - bottle_cap_pos, dim=1)
+
+    # Distance between the left hand and bottle
+    dist_left_hand_to_bottle = torch.norm(left_hand_pos - bottle_pos, dim=1)
+
+    # Distance between the bottle cap and goal position
+    dist_cap_to_goal = torch.norm(bottle_cap_pos - goal_pos, dim=1)
+
+    # Penalize large distances between the hands
+    handdistance_reward_raw = -dist_right_hand_to_cap - dist_left_hand_to_bottle
+
+    # Apply transformation to handdistance_reward_raw
+    hand_distance_temperature = 50.0
+    hand_distance_transformed_reward = torch.exp(handdistance_reward_raw / hand_distance_temperature)
+
+    # Penalize large distances between the bottle cap and goal position
+    cap_goal_distance_reward = -dist_cap_to_goal
+
+    # Combine individual reward components
+    total_reward = hand_distance_transformed_reward + cap_goal_distance_reward
+
+    # Create a dictionary to store individual reward components
+    rewards_dict = {
+        "hand_distance_transformed_reward": hand_distance_transformed_reward,
+        "cap_goal_distance_reward": cap_goal_distance_reward,
+    }
+
+    return total_reward, rewards_dict

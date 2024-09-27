@@ -1,0 +1,36 @@
+The task is to make the humanoid run as fast as possible.
+Therefore, the reward function should encourage forward movement.
+This can be achieved by rewarding the agent based on the velocity in the forward direction.
+We can also penalize the agent for using too much energy, as this would encourage
+efficient movement.
+
+Here is a possible reward function:
+
+```python
+def compute_humanoid_reward(obs_buf, reset_buf, progress_buf, actions, up_weight, heading_weight, potentials, prev_potentials, actions_cost_scale, energy_cost_scale, joints_at_limit_cost_scale, max_motor_effort, motor_efforts, termination_height, death_cost, max_episode_length):
+    # type: (Tensor, Tensor, Tensor, Tensor, float, float, Tensor, Tensor, float, float, float, float, Tensor, float, float, float) -> Tuple[Tensor, Tensor]
+
+    # Reward is based on forward velocity
+    reward = obs_buf[:, 1]
+
+    # Penalize energy usage
+    energy_cost = energy_cost_scale * torch.sum(actions**2, dim=-1)
+    reward -= energy_cost
+
+    # Penalize joints at limit
+    joints_at_limit_cost = joints_at_limit_cost_scale * torch.sum(obs_buf[:, 12:32] > 0.99, dim=-1)
+    reward -= joints_at_limit_cost
+
+    # Penalize for falling
+    not_upright = torch.abs(1 - obs_buf[:, 10]) > 0.25
+    reward = torch.where(not_upright, torch.ones_like(reward) * death_cost, reward)
+
+    # Reset if fallen
+    reset = torch.where(not_upright, torch.ones_like(reset_buf), reset_buf)
+    reset = torch.where(progress_buf >= max_episode_length - 1, torch.ones_like(reset_buf), reset)
+
+    return reward, reset
+```
+
+This reward function encourages the agent to move forward as fast as possible, while also
+encouraging efficient movement and penalizing the agent for falling or reaching joint limits.

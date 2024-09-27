@@ -1,0 +1,63 @@
+import torch
+from torch import Tensor
+from typing import Dict, Tuple
+
+@torch.jit.script
+def compute_reward(
+    left_hand_pos: torch.Tensor,
+    right_hand_pos: torch.Tensor,
+    left_hand_rot: torch.Tensor,
+    right_hand_rot: torch.Tensor,
+    door_left_handle_pos: torch.Tensor,
+    door_right_handle_pos: torch.Tensor,
+    door_left_handle_rot: torch.Tensor,
+    door_right_handle_rot: torch.Tensor,
+) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+
+    dist_left_handle_left_hand = torch.norm(left_hand_pos - door_left_handle_pos, dim=-1)
+    dist_right_handle_left_hand = torch.norm(left_hand_pos - door_right_handle_pos, dim=-1)
+    dist_left_handle_right_hand = torch.norm(right_hand_pos - door_left_handle_pos, dim=-1)
+    dist_right_handle_right_hand = torch.norm(right_hand_pos - door_right_handle_pos, dim=-1)
+
+    min_dist_left_handle_left_hand = torch.min(dist_left_handle_left_hand, dist_right_handle_left_hand)
+    min_dist_right_handle_right_hand = torch.min(dist_left_handle_right_hand, dist_right_handle_right_hand)
+
+    hand_handle_dist_weight = 0.9
+    hand_handle_dist_temp = 1.2
+
+    exp_min_dist_left_handle_left_hand = torch.exp(-hand_handle_dist_temp * min_dist_left_handle_left_hand)
+    exp_min_dist_right_handle_right_hand = torch.exp(-hand_handle_dist_temp * min_dist_right_handle_right_hand)
+
+    reward_hand_handle_dist_left_hand = hand_handle_dist_weight * exp_min_dist_left_handle_left_hand
+    reward_hand_handle_dist_right_hand = hand_handle_dist_weight * exp_min_dist_right_handle_right_hand
+
+    # Calculate door handle orientation reward
+    door_handle_orientation_weight = 1.0
+    door_handle_orientation_temp = 1.5
+
+    door_left_handle_rot_vec = torch.atan2(2 * (door_left_handle_rot[:, 0] * door_left_handle_rot[:, 1] + door_left_handle_rot[:, 2] * door_left_handle_rot[:, 3]), 1 - 2 * (door_left_handle_rot[:, 1] * door_left_handle_rot[:, 1] + door_left_handle_rot[:, 2] * door_left_handle_rot[:, 2]))
+    door_right_handle_rot_vec = torch.atan2(2 * (door_right_handle_rot[:, 0] * door_right_handle_rot[:, 1] + door_right_handle_rot[:, 2] * door_right_handle_rot[:, 3]), 1 - 2 * (door_right_handle_rot[:, 1] * door_right_handle_rot[:, 1] + door_right_handle_rot[:, 2] * door_right_handle_rot[:, 2]))
+
+    left_hand_rot_vec = torch.atan2(2 * (left_hand_rot[:, 0] * left_hand_rot[:, 1] + left_hand_rot[:, 2] * left_hand_rot[:, 3]), 1 - 2 * (left_hand_rot[:, 1] * left_hand_rot[:, 1] + left_hand_rot[:, 2] * left_hand_rot[:, 2]))
+    right_hand_rot_vec = torch.atan2(2 * (right_hand_rot[:, 0] * right_hand_rot[:, 1] + right_hand_rot[:, 2] * right_hand_rot[:, 3]), 1 - 2 * (right_hand_rot[:, 1] * right_hand_rot[:, 1] + right_hand_rot[:, 2] * right_hand_rot[:, 2]))
+
+    door_left_handle_orientation_diff = torch.abs(left_hand_rot_vec - door_left_handle_rot_vec)
+    door_right_handle_orientation_diff = torch.abs(right_hand_rot_vec - door_right_handle_rot_vec)
+
+    exp_door_left_handle_orientation_diff = torch.exp(-door_handle_orientation_temp * door_left_handle_orientation_diff)
+    exp_door_right_handle_orientation_diff = torch.exp(-door_handle_orientation_temp * door_right_handle_orientation_diff)
+
+    reward_door_handle_orientation_left = door_handle_orientation_weight * exp_door_left_handle_orientation_diff
+    reward_door_handle_orientation_right = door_handle_orientation_weight * exp_door_right_handle_orientation_diff
+
+    overall_reward = (reward_hand_handle_dist_left_hand.mean() + reward_hand_handle_dist_right_hand.mean() + reward_door_handle_orientation_left.mean() + reward_door_handle_orientation_right.mean()) / 4
+
+    rewards = {
+        "reward_hand_handle_dist_left_hand": reward_hand_handle_dist_left_hand.mean(),
+        "reward_hand_handle_dist_right_hand": reward_hand_handle_dist_right_hand.mean(),
+        "reward_door_handle_orientation_left": reward_door_handle_orientation_left.mean(),
+        "reward_door_handle_orientation_right": reward_door_handle_orientation_right.mean(),
+        "overall_reward": overall_reward
+    }
+
+    return overall_reward, rewards
